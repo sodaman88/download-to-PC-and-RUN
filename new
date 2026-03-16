@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Glitch Visual – Recordable</title>
+<style>
+body{margin:0;background:#000;overflow:hidden;font-family:Arial;color:#0f0}
+canvas{position:absolute;top:0;left:0}
+#controls{position:fixed;top:10px;left:10px;z-index:10;background:rgba(0,0,0,0.7);padding:12px;border-radius:6px}
+button{margin:0 8px 8px 0;padding:8px 14px;font-size:14px}
+#status{margin-top:8px;color:#ff0}
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <button onclick="startRecording()">Start Recording</button>
+  <button onclick="stopRecording()">Stop & Download</button>
+  <div id="status">Not recording</div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight}
+resize();
+window.onresize=resize;
+
+function rand(min,max){return Math.random()*(max-min)+min}
+
+function draw(){
+  ctx.fillStyle="rgba(0,0,0,0.25)";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let i=0;i<8000;i++){
+    let x=rand(0,canvas.width), y=rand(0,canvas.height);
+    let w=rand(200,800), h=rand(50,300);
+    ctx.fillStyle=`hsl(${Math.random()*360},100%,50%)`;
+    ctx.fillRect(x,y,w,h);
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+const dest = audioCtx.createMediaStreamDestination();
+
+function glitch(){
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  osc.type="sawtooth";
+  osc.frequency.value=rand(60,3000);
+  gain.gain.value=0.2;
+  osc.connect(gain);
+  gain.connect(dest);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime+0.05);
+}
+setInterval(glitch,60);
+
+let recorder=null, chunks=[];
+
+function startRecording(){
+  if(recorder&&recorder.state==="recording") return;
+  const vs = canvas.captureStream(30);
+  const stream = new MediaStream([...vs.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  recorder = new MediaRecorder(stream, {mimeType:"video/webm;codecs=vp9,opus"});
+  chunks=[];
+  recorder.ondataavailable = e=>{if(e.data.size>0) chunks.push(e.data)};
+  recorder.onstop = ()=>{
+    const blob = new Blob(chunks,{type:"video/webm"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href=url; a.download="glitch.webm"; a.click();
+    URL.revokeObjectURL(url);
+    document.getElementById("status").textContent="Saved – check Downloads";
+  };
+  recorder.start(1000);
+  document.getElementById("status").textContent="Recording… (very loud!)";
+}
+
+function stopRecording(){
+  if(recorder&&recorder.state==="recording") recorder.stop();
+}
+</script>
+</body>
+</html>
